@@ -9,6 +9,7 @@ const int chipSelect = 4;
 
 void setup() {
   Serial.begin(9600);
+  Serial.println("=====================================");
 
   // Initialize SD card
   if (!SD.begin(chipSelect)) {
@@ -28,19 +29,27 @@ void setup() {
 
   Serial.println("File opened successfully");
 
-  char encodedData = "";
-  while (file.available()) {
-    encodedData += (char)file.read();
+  const int maxSize = 100;
+  char fileContent[maxSize];
+  int i = 0;
+  while (file.available() && i < maxSize - 1) {
+    char c = file.read();
+    fileContent[i] = c;
+    i++;
   }
+  fileContent[i] = '\0';
   file.close();
 
-  int encodedDataLength = strlen(encodedData);
+  // Print the content of the character array
+  Serial.println(fileContent);
+
+  char encodedData = fileContent;
+
+  int encodedDataLength = strlen(fileContent);
   int decodedDataLength = Base64.decodedLength(encodedData, encodedDataLength);
   char decodedData[decodedDataLength + 1];
-  Base64.decode(decodedData, encodedData, encodedDataLength);
-
+  Base64.decode(decodedData, fileContent, encodedDataLength);
   Serial.println(decodedData);
-
 
   // Allocate a buffer for the JSON data
   const size_t bufferSize = JSON_OBJECT_SIZE(3) + 30;
@@ -58,7 +67,7 @@ void setup() {
   JsonObject root = jsonBuffer.as<JsonObject>();
 
   // Access individual fields
-  int threshold = root["volatge_threshold"];
+  int threshold = root["voltage_threshold"];
   int cylinders = root["number_of_cylinders"];
 
   // Print the data
@@ -72,4 +81,3 @@ void setup() {
 void loop() {
   // Nothing to do here
 }
-

@@ -10,21 +10,27 @@ const int sparkPin = 10;
 int count = 0;
 bool status = false;
 const int chipSelect = 8;
-unsigned long previousMillis = 0;
 
 // LCD screen
-const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+const int rs = 6, en = 7, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 // interval for how frequently to calculate rpm
-const long interval = 2000;
+const long interval = 1000;
+unsigned long previousMillis = 0;
 
 // interval for how frequently to write runtime to safety profile
-const int write_interval = 60000;
+const int write_interval = 3000;
+unsigned long previousMillisWrite = 0;
+char dataBuffer[100];
+
+File safety_profile;
+File engine_profile;
+bool profile_status = true;
 
 // engine properties
 int voltage_threshold = 400;
-int number_of_cylinders = 2;
+int number_of_cylinders = 1;
 int factory_max_rpm = 6000;
 
 // safety properties
@@ -42,19 +48,21 @@ unsigned long currentPulse = 0;
 void setup() {
   Serial.begin(9600);
   lcd.begin(16, 2);
-  lcd.print("RPM: ");
 
   pinMode(sparkPin, OUTPUT);
   digitalWrite(sparkPin, HIGH);
 
-  if (!SD.begin(chipSelect)) {
-    Serial.println("SD Card initialization failed");
+  if (SD.begin(chipSelect)) {
+    engine_profile = SD.open("ENGINE.PRO");
+    safety_profile = SD.open("SAFETY.PRO");
+  } else {
+    profile_status = false;
     return;
   }
-  File engine_profile = SD.open("ENGINE.PRO");
-  File safety_profile = SD.open("SAFETY.PRO");
+  
   if (!engine_profile || !safety_profile) {
     Serial.println("Failed to read profiles");
+    profile_status = false;
     return;
   }
 
@@ -110,19 +118,23 @@ void setup() {
   max_rpm = 3000 + (level/3.0f) * (factory_max_rpm - 3000);
 
   if (verbose) {
-    Serial.println("Engine Info:");
+    Serial.println("======Engine Info======");
+    Serial.print("Voltage Threshold: ");
     Serial.println(voltage_threshold);
+    Serial.print("Number of Cylinders: ");
     Serial.println(number_of_cylinders);
+    Serial.print("Factory RPM Limit: ");
     Serial.println(factory_max_rpm);
-    Serial.println("Safety Info:");
+    Serial.println("======Safety Info======");
+    Serial.print("Runtime (s): ");
     Serial.println(seconds);
-    Serial.print("{");
-    for (int i=0; i<=sizeof(level_requirements) / sizeof(level_requirements[0]); i++) {
+    Serial.print("Levels: {");
+    for (int i=0; i<=(sizeof(level_requirements) / sizeof(level_requirements[0]))-1; i++) {
       Serial.print(level_requirements[i]);
       Serial.print(" ");
     }
     Serial.println("}");
-    Serial.println("===============");
+    Serial.println("=================");
     Serial.print("Level: ");
     Serial.println(level);
     Serial.print("Max RPM: ");
@@ -145,23 +157,59 @@ void loop() {
   }
   if (sensorVal <= 400) {
     status = false;
-    digitalWrite(sparkPin, HIGH);
+    digitalWrite(sparkPin, LOW);
     // currentPulse = lastPulse;
   }
 
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    Serial.print(currentPulse);
-    Serial.print(" - ");
-    Serial.print(lastPulse);
-    Serial.print(" = ");
-    Serial.println(currentPulse - lastPulse);
-    Serial.print("RPM: ");
-    Serial.println(60000/(currentPulse-lastPulse));
+
+    // Serial.print("RPM: ");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("RPM: ");
+    lcd.setCursor(5, 0);
+
+    if (currentPulse - lastPulse == 0) {
+      // Serial.println(0);
+      lcd.print(0);
+    } else {
+      // Serial.println(60000/(currentPulse-lastPulse));
+      lcd.print(60000/(currentPulse-lastPulse));
+    }
+    lastPulse = currentPulse;
+
+    lcd.setCursor(0, 1);
+    lcd.print("Time (s): ");
+    lcd.setCursor(10, 1);
+    lcd.print(seconds + currentMillis/1000);
+  }
+
+  // write runtime
+  if (currentMillis - previousMillisWrite >= write_interval) {
+    previousMillisWrite = currentMillis;
+
+    if (profile_status) {
+      // Serial.println(String(level_requirements[0]) + "\n" + String(level_requirements[1]) + "\n" + String(seconds + currentMillis/1000));
+      String data = String(level_requirements[0]) + "\n" + String(level_requirements[1]) + "\n" + String(seconds + currentMillis/1000);
+      data.toCharArray(dataBuffer, 100);
+      int inputStringLength = strlen(dataBuffer);
+
+      int encodedLength = Base64.encodedLength(inputStringLength);
+      char encodedString[encodedLength + 1];
+      Base64.encode(encodedString, dataBuffer, inputStringLength);
+
+      engine_profile = SD.open("SAFETY.PRO", FILE_WRITE | O_TRUNC);
+      if (engine_profile) {
+        engine_profile.println(encodedString);
+        engine_profile.close();
+      }
+      
+    }
   }
 }
 
 void spark() {
   // Serial.println("Spark");
-  digitalWrite(sparkPin, LOW);
+  digitalWrite(sparkPin, HIGH);
 }

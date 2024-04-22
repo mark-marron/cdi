@@ -29,7 +29,7 @@ File engine_profile;
 bool profile_status = true;
 
 // engine properties
-int voltage_threshold = 400;
+int voltage_threshold = 500;
 int number_of_cylinders = 1;
 int factory_max_rpm = 6000;
 
@@ -108,7 +108,7 @@ void setup() {
   // calculate level
   int size = sizeof(level_requirements) / sizeof(level_requirements[0]);
   level = 1;
-  for (int i=0; i<=size; i++) {
+  for (int i=0; i<size; i++) {
     if (seconds > level_requirements[i]) {
       level ++;
     }
@@ -129,12 +129,12 @@ void setup() {
     Serial.print("Runtime (s): ");
     Serial.println(seconds);
     Serial.print("Levels: {");
-    for (int i=0; i<=(sizeof(level_requirements) / sizeof(level_requirements[0]))-1; i++) {
+    for (int i=0; i<size; i++) {
       Serial.print(level_requirements[i]);
       Serial.print(" ");
     }
     Serial.println("}");
-    Serial.println("=================");
+    Serial.println("=======================");
     Serial.print("Level: ");
     Serial.println(level);
     Serial.print("Max RPM: ");
@@ -147,34 +147,31 @@ void loop() {
   int sensorVal = analogRead(analogInputPin);
   unsigned long currentMillis = millis();
 
-  if (!status && sensorVal >= 500) {
+  if (!status && sensorVal >= voltage_threshold) {
     count++;
     lastPulse = currentPulse;
     currentPulse = millis();
-
-    spark();
+    if ((60000/(currentPulse-lastPulse)) < max_rpm) {
+      spark();
+    }
     status = true;
   }
-  if (sensorVal <= 400) {
+  if (sensorVal <= voltage_threshold) {
     status = false;
     digitalWrite(sparkPin, LOW);
-    // currentPulse = lastPulse;
   }
 
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
 
-    // Serial.print("RPM: ");
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("RPM: ");
     lcd.setCursor(5, 0);
 
     if (currentPulse - lastPulse == 0) {
-      // Serial.println(0);
       lcd.print(0);
     } else {
-      // Serial.println(60000/(currentPulse-lastPulse));
       lcd.print(60000/(currentPulse-lastPulse));
     }
     lastPulse = currentPulse;
